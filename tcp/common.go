@@ -1,4 +1,4 @@
-package transport
+package tcp
 
 import (
 	"net"
