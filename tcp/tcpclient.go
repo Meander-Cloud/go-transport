@@ -35,35 +35,35 @@ func (c *TcpClient) Protocol() *Protocol {
 }
 
 func (c *TcpClient) Shutdown() {
-	log.Printf("%s: Shutdown starting\n", (*c.protocol).Name())
+	log.Printf("%s: Shutdown starting", (*c.protocol).Name())
 
 	// mark shutdown in progress
 	c.inShutdown.Store(true)
-	log.Printf("%s: Shutdown marked atomically\n", (*c.protocol).Name())
+	log.Printf("%s: Shutdown marked atomically", (*c.protocol).Name())
 
 	func() {
 		defer func() {
 			err := recover()
 			if err != nil {
-				log.Printf("%s: Shutdown recovered from panic=%s\n", (*c.protocol).Name(), err)
+				log.Printf("%s: Shutdown recovered from panic=%s", (*c.protocol).Name(), err)
 			}
 		}()
 
 		select {
 		case c.exitch <- struct{}{}:
-			log.Printf("%s: Shutdown exit channel notified\n", (*c.protocol).Name())
+			log.Printf("%s: Shutdown exit channel notified", (*c.protocol).Name())
 		default:
-			log.Printf("%s: Shutdown failed to send to exit channel\n", (*c.protocol).Name())
+			log.Printf("%s: Shutdown failed to send to exit channel", (*c.protocol).Name())
 		}
 	}()
 
 	// explicitly invoke protocol close to break from synchronous ReadLoop
 	(*c.protocol).Close()
-	log.Printf("%s: Shutdown explicitly invoked protocol close\n", (*c.protocol).Name())
+	log.Printf("%s: Shutdown explicitly invoked protocol close", (*c.protocol).Name())
 }
 
 func (c *TcpClient) Init() {
-	log.Printf("%s: Init starting\n", (*c.protocol).Name())
+	log.Printf("%s: Init starting", (*c.protocol).Name())
 	c.pinitwg.Add(1)
 
 	// do not access member variables (except protocol) in this caller goroutine beyond this point
@@ -71,13 +71,13 @@ func (c *TcpClient) Init() {
 
 	go func() {
 		defer func() {
-			log.Printf("%s: exit routine started\n", (*c.protocol).Name())
+			log.Printf("%s: exit routine started", (*c.protocol).Name())
 
 			(*c.protocol).Close()
 			close(c.exitch)
 			c.pinitwg.Done() // signal caller goroutine
 
-			log.Printf("%s: exit routine completed, Init goroutine exiting\n", (*c.protocol).Name())
+			log.Printf("%s: exit routine completed, Init goroutine exiting", (*c.protocol).Name())
 		}()
 
 		// loop to retry connection indefinitely
@@ -91,12 +91,12 @@ func (c *TcpClient) Init() {
 
 				conn, err := dialer.Dial("tcp", c.connectAddr)
 				if err != nil {
-					log.Printf("%s: failed to dial TCP connectAddr=%s, err=%s, at attempt=%d\n", (*c.protocol).Name(), c.connectAddr, err.Error(), attempt)
+					log.Printf("%s: failed to dial TCP connectAddr=%s, err=%s, at attempt=%d", (*c.protocol).Name(), c.connectAddr, err.Error(), attempt)
 					return
 				}
 
 				log.Printf(
-					"%s: established %s connection to ip=%s, at attempt=%d\n",
+					"%s: established %s connection to ip=%s, at attempt=%d",
 					(*c.protocol).Name(),
 					conn.RemoteAddr().Network(),
 					conn.RemoteAddr().String(),
@@ -105,7 +105,7 @@ func (c *TcpClient) Init() {
 
 				connTCP, ok := conn.(*net.TCPConn)
 				if !ok {
-					log.Printf("%s: connection %s is of transport %s and not tcp, closing and skipping\n", (*c.protocol).Name(), conn.RemoteAddr().String(), conn.RemoteAddr().Network())
+					log.Printf("%s: connection %s is of transport %s and not tcp, closing and skipping", (*c.protocol).Name(), conn.RemoteAddr().String(), conn.RemoteAddr().Network())
 					conn.Close()
 					return
 				}
@@ -114,7 +114,7 @@ func (c *TcpClient) Init() {
 				// by default go net implementation enables TCP_NODELAY / disables Nagle's Algorithm
 				err = connTCP.SetNoDelay(true)
 				if err != nil {
-					log.Printf("%s: connection %s failed to enable TCP_NODELAY, err=%s\n", (*c.protocol).Name(), connTCP.RemoteAddr().String(), err.Error())
+					log.Printf("%s: connection %s failed to enable TCP_NODELAY, err=%s", (*c.protocol).Name(), connTCP.RemoteAddr().String(), err.Error())
 					// proceed
 				}
 
@@ -125,14 +125,14 @@ func (c *TcpClient) Init() {
 				// WIP to allow config https://github.com/golang/go/issues/62254
 				err = connTCP.SetKeepAlive(true)
 				if err != nil {
-					log.Printf("%s: connection %s failed to enable SO_KEEPALIVE, err=%s\n", (*c.protocol).Name(), connTCP.RemoteAddr().String(), err.Error())
+					log.Printf("%s: connection %s failed to enable SO_KEEPALIVE, err=%s", (*c.protocol).Name(), connTCP.RemoteAddr().String(), err.Error())
 					// proceed
 				}
 
 				err = connTCP.SetKeepAlivePeriod(TcpKeepIntvl)
 				if err != nil {
 					log.Printf(
-						"%s: connection %s failed to set TCP_KEEPIDLE/TCP_KEEPINTVL to %ds, err=%s\n",
+						"%s: connection %s failed to set TCP_KEEPIDLE/TCP_KEEPINTVL to %ds, err=%s",
 						(*c.protocol).Name(),
 						connTCP.RemoteAddr().String(),
 						TcpKeepIntvl/time.Second,
@@ -146,27 +146,27 @@ func (c *TcpClient) Init() {
 			}()
 
 			if c.inShutdown.Load() {
-				log.Printf("%s: shutdown in progress, exiting\n", (*c.protocol).Name())
+				log.Printf("%s: shutdown in progress, exiting", (*c.protocol).Name())
 				return
 			}
 
 			// increment attempt count
 			attempt += 1
 
-			log.Printf("%s: scheduling reconnect in %ds, next attempt=%d\n", (*c.protocol).Name(), TcpReconIntvl/time.Second, attempt)
+			log.Printf("%s: scheduling reconnect in %ds, next attempt=%d", (*c.protocol).Name(), TcpReconIntvl/time.Second, attempt)
 			timer := time.NewTimer(TcpReconIntvl)
 
 			select {
 			case t := <-timer.C: // wait
-				log.Printf("%s: timer triggered at t=%v, current reconnect attempt=%d\n", (*c.protocol).Name(), t, attempt)
+				log.Printf("%s: timer triggered at t=%v, current reconnect attempt=%d", (*c.protocol).Name(), t, attempt)
 				continue
 			case <-c.exitch: // wait
 				timer.Stop()
-				log.Printf("%s: exitch received, exiting\n", (*c.protocol).Name())
+				log.Printf("%s: exitch received, exiting", (*c.protocol).Name())
 				return
 			}
 		}
 	}()
 
-	log.Printf("%s: Init started\n", (*c.protocol).Name())
+	log.Printf("%s: Init started", (*c.protocol).Name())
 }
