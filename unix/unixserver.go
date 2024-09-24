@@ -12,8 +12,6 @@ type UnixServer struct {
 
 	exitwg sync.WaitGroup
 	exitch chan struct{}
-
-	listener net.Listener
 }
 
 func NewUnixServer(options *Options) (*UnixServer, error) {
@@ -22,8 +20,6 @@ func NewUnixServer(options *Options) (*UnixServer, error) {
 
 		exitwg: sync.WaitGroup{},
 		exitch: make(chan struct{}, 1),
-
-		listener: nil,
 	}
 
 	err := s.init()
@@ -61,7 +57,7 @@ func (s *UnixServer) init() error {
 		)
 	}
 
-	s.listener, err = net.Listen("unix", s.options.SocketPath)
+	listener, err := net.Listen("unix", s.options.SocketPath)
 	if err != nil {
 		log.Printf(
 			"%s: failed to listen on Unix Domain SocketPath=%s, err=%s",
@@ -80,19 +76,21 @@ func (s *UnixServer) init() error {
 	go func() {
 		log.Printf("%s: lifecycle management goroutine starting", s.options.LogPrefix)
 
+		defer func() {
+			log.Printf("%s: lifecycle management goroutine exiting", s.options.LogPrefix)
+			s.exitwg.Done()
+		}()
+
 		select {
 		case <-s.exitch:
 			log.Printf("%s: exitch received, proceeding to exit", s.options.LogPrefix)
 		}
 
-		log.Printf("%s: listener closing", s.options.LogPrefix)
-		s.listener.Close()
+		log.Printf("%s: closing listener", s.options.LogPrefix)
+		listener.Close()
 
-		log.Printf("%s: protocol closing", s.options.LogPrefix)
+		log.Printf("%s: closing protocol", s.options.LogPrefix)
 		s.options.Protocol.Close()
-
-		log.Printf("%s: lifecycle management goroutine exiting", s.options.LogPrefix)
-		s.exitwg.Done()
 	}()
 
 	// spawn listener accept loop goroutine
@@ -108,18 +106,20 @@ func (s *UnixServer) init() error {
 		}()
 
 		for {
-			conn, err := s.listener.Accept()
+			conn, err := listener.Accept()
 			if err != nil {
 				log.Printf("%s: listener accept err=%s, proceeding to exit", s.options.LogPrefix, err.Error())
 				return
 			}
 
-			log.Printf(
-				"%s: new %s connection %s",
-				s.options.LogPrefix,
-				conn.RemoteAddr().Network(),
-				conn.RemoteAddr().String(),
-			)
+			if s.options.LogDebug {
+				log.Printf(
+					"%s: new %s connection %s",
+					s.options.LogPrefix,
+					conn.RemoteAddr().Network(),
+					conn.RemoteAddr().String(),
+				)
+			}
 
 			// spawn ReadLoop goroutine for each established connection
 			go s.options.Protocol.ReadLoop(conn)

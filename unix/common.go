@@ -1,6 +1,8 @@
 package unix
 
-import "net"
+import (
+	"net"
+)
 
 type Protocol interface {
 	Close()
