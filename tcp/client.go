@@ -34,7 +34,13 @@ func NewTcpClient(options *Options) (*TcpClient, error) {
 
 func (c *TcpClient) Shutdown() {
 	log.Printf("%s: synchronized shutdown starting", c.options.LogPrefix)
-	c.exitch <- struct{}{}
+
+	select {
+	case c.exitch <- struct{}{}:
+	default:
+		log.Printf("%s: exitch already signaled", c.options.LogPrefix)
+	}
+
 	c.exitwg.Wait()
 	log.Printf("%s: synchronized shutdown done", c.options.LogPrefix)
 }
@@ -44,25 +50,31 @@ func (c *TcpClient) init() error {
 	var keepAliveCount uint16
 	var dialTimeout time.Duration
 	var reconnectInterval time.Duration
+	var reconnectLogEvery uint32
 	if c.options.KeepAliveInterval == 0 {
-		keepAliveInterval = TcpKeepAliveInterval
+		keepAliveInterval = KeepAliveInterval
 	} else {
 		keepAliveInterval = c.options.KeepAliveInterval
 	}
 	if c.options.KeepAliveCount == 0 {
-		keepAliveCount = TcpKeepAliveCount
+		keepAliveCount = KeepAliveCount
 	} else {
 		keepAliveCount = c.options.KeepAliveCount
 	}
 	if c.options.DialTimeout == 0 {
-		dialTimeout = TcpDialTimeout
+		dialTimeout = DialTimeout
 	} else {
 		dialTimeout = c.options.DialTimeout
 	}
 	if c.options.ReconnectInterval == 0 {
-		reconnectInterval = TcpReconnectInterval
+		reconnectInterval = ReconnectInterval
 	} else {
 		reconnectInterval = c.options.ReconnectInterval
+	}
+	if c.options.ReconnectLogEvery == 0 {
+		reconnectLogEvery = ReconnectLogEvery
+	} else {
+		reconnectLogEvery = c.options.ReconnectLogEvery
 	}
 
 	dialer := &net.Dialer{
@@ -104,10 +116,8 @@ func (c *TcpClient) init() error {
 			c.exitwg.Done()
 		}()
 
-		select {
-		case <-c.exitch:
-			log.Printf("%s: exitch received, proceeding to exit", c.options.LogPrefix)
-		}
+		<-c.exitch // wait
+		log.Printf("%s: exitch received, proceeding to exit", c.options.LogPrefix)
 
 		log.Printf("%s: marking atomic shutdown", c.options.LogPrefix)
 		inShutdown.Store(true)
@@ -152,25 +162,32 @@ func (c *TcpClient) init() error {
 		// loop to retry connection indefinitely
 		var attempt uint32 = 1
 		for {
+			logAttempt := (attempt-1)%reconnectLogEvery == 0
+
 			func() {
-				log.Printf(
-					"%s: dialing TCP Address=%s at attempt=%d",
-					c.options.LogPrefix,
-					c.options.Address,
-					attempt,
-				)
-
-				dialContext, _ := context.WithTimeout(rootContext, dialTimeout)
-
-				conn, err := dialer.DialContext(dialContext, "tcp", c.options.Address)
-				if err != nil {
+				if c.options.LogDebug && logAttempt {
 					log.Printf(
-						"%s: failed to dial TCP Address=%s at attempt=%d, err=%s",
+						"%s: dialing TCP Address=%s at attempt=%d",
 						c.options.LogPrefix,
 						c.options.Address,
 						attempt,
-						err.Error(),
 					)
+				}
+
+				dialContext, dialRelease := context.WithTimeout(rootContext, dialTimeout)
+
+				conn, err := dialer.DialContext(dialContext, "tcp", c.options.Address)
+				dialRelease()
+				if err != nil {
+					if logAttempt {
+						log.Printf(
+							"%s: failed to dial TCP Address=%s at attempt=%d, err=%s",
+							c.options.LogPrefix,
+							c.options.Address,
+							attempt,
+							err.Error(),
+						)
+					}
 					return
 				}
 
@@ -227,12 +244,14 @@ func (c *TcpClient) init() error {
 			// increment attempt count
 			attempt += 1
 
-			log.Printf(
-				"%s: scheduling reconnect in %v, next attempt=%d",
-				c.options.LogPrefix,
-				reconnectInterval,
-				attempt,
-			)
+			if c.options.LogDebug && logAttempt {
+				log.Printf(
+					"%s: scheduling reconnect in %v, next attempt=%d",
+					c.options.LogPrefix,
+					reconnectInterval,
+					attempt,
+				)
+			}
 
 			timer := time.NewTimer(reconnectInterval)
 			select {

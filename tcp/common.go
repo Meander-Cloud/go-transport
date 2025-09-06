@@ -7,10 +7,11 @@ import (
 
 const (
 	// defaults for when not provided in Options
-	TcpKeepAliveInterval time.Duration = 47 * time.Second
-	TcpKeepAliveCount    uint16        = 2
-	TcpDialTimeout       time.Duration = 5 * time.Second
-	TcpReconnectInterval time.Duration = 15 * time.Second
+	KeepAliveInterval time.Duration = time.Second * 47
+	KeepAliveCount    uint16        = 2
+	DialTimeout       time.Duration = time.Second * 5
+	ReconnectInterval time.Duration = time.Second * 15
+	ReconnectLogEvery uint32        = 120
 )
 
 type Protocol interface {
@@ -33,6 +34,9 @@ type Options struct {
 
 	// client reconnect attempt interval
 	ReconnectInterval time.Duration
+
+	// client reconnect to log every nth attempt
+	ReconnectLogEvery uint32
 
 	// user installed protocol for processing connection
 	Protocol Protocol

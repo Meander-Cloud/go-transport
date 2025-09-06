@@ -33,7 +33,13 @@ func NewTcpServer(options *Options) (*TcpServer, error) {
 
 func (s *TcpServer) Shutdown() {
 	log.Printf("%s: synchronized shutdown starting", s.options.LogPrefix)
-	s.exitch <- struct{}{}
+
+	select {
+	case s.exitch <- struct{}{}:
+	default:
+		log.Printf("%s: exitch already signaled", s.options.LogPrefix)
+	}
+
 	s.exitwg.Wait()
 	log.Printf("%s: synchronized shutdown done", s.options.LogPrefix)
 }
@@ -42,12 +48,12 @@ func (s *TcpServer) init() error {
 	var keepAliveInterval time.Duration
 	var keepAliveCount uint16
 	if s.options.KeepAliveInterval == 0 {
-		keepAliveInterval = TcpKeepAliveInterval
+		keepAliveInterval = KeepAliveInterval
 	} else {
 		keepAliveInterval = s.options.KeepAliveInterval
 	}
 	if s.options.KeepAliveCount == 0 {
-		keepAliveCount = TcpKeepAliveCount
+		keepAliveCount = KeepAliveCount
 	} else {
 		keepAliveCount = s.options.KeepAliveCount
 	}
@@ -91,10 +97,8 @@ func (s *TcpServer) init() error {
 			s.exitwg.Done()
 		}()
 
-		select {
-		case <-s.exitch:
-			log.Printf("%s: exitch received, proceeding to exit", s.options.LogPrefix)
-		}
+		<-s.exitch // wait
+		log.Printf("%s: exitch received, proceeding to exit", s.options.LogPrefix)
 
 		log.Printf("%s: closing listener", s.options.LogPrefix)
 		listener.Close()

@@ -32,7 +32,13 @@ func NewUnixServer(options *Options) (*UnixServer, error) {
 
 func (s *UnixServer) Shutdown() {
 	log.Printf("%s: synchronized shutdown starting", s.options.LogPrefix)
-	s.exitch <- struct{}{}
+
+	select {
+	case s.exitch <- struct{}{}:
+	default:
+		log.Printf("%s: exitch already signaled", s.options.LogPrefix)
+	}
+
 	s.exitwg.Wait()
 	log.Printf("%s: synchronized shutdown done", s.options.LogPrefix)
 }
@@ -81,10 +87,8 @@ func (s *UnixServer) init() error {
 			s.exitwg.Done()
 		}()
 
-		select {
-		case <-s.exitch:
-			log.Printf("%s: exitch received, proceeding to exit", s.options.LogPrefix)
-		}
+		<-s.exitch // wait
+		log.Printf("%s: exitch received, proceeding to exit", s.options.LogPrefix)
 
 		log.Printf("%s: closing listener", s.options.LogPrefix)
 		listener.Close()
