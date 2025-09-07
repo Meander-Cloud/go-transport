@@ -103,11 +103,10 @@ func (p *Client[T, R]) get() error {
 	req, err := http.NewRequest(http.MethodGet, p.URL, nil)
 	if err != nil {
 		log.Printf(
-			"%s: method=%s, url=%s, request=%+v, NewRequest failed, err=%s",
+			"%s: method=%s, url=%s, NewRequest failed, err=%s",
 			p.LogPrefix,
 			p.Method,
 			p.URL,
-			p.Request,
 			err.Error(),
 		)
 		return err
