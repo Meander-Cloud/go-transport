@@ -22,6 +22,8 @@ type Options[T any, R any] struct {
 	Timeout  time.Duration
 	Request  T
 	Response R
+	Encode   bool
+	Decode   bool
 
 	LogPrefix string
 	LogDebug  bool
@@ -120,28 +122,32 @@ func (p *Client[T, R]) get() error {
 }
 
 func (p *Client[T, R]) post() error {
-	byteSlice, err := jsoniter.Marshal(p.Request)
-	if err != nil {
-		log.Printf(
-			"%s: method=%s, url=%s, failed to json marshal request=%+v, err=%s",
-			p.LogPrefix,
-			p.Method,
-			p.URL,
-			p.Request,
-			err.Error(),
-		)
-		return err
+	var reader *bytes.Reader
+	if p.Encode {
+		byteSlice, err := jsoniter.Marshal(p.Request)
+		if err != nil {
+			log.Printf(
+				"%s: method=%s, url=%s, failed to json marshal request=%+v, err=%s",
+				p.LogPrefix,
+				p.Method,
+				p.URL,
+				p.Request,
+				err.Error(),
+			)
+			return err
+		}
+		p.requestByteSlice = byteSlice
+		reader = bytes.NewReader(byteSlice)
 	}
-	p.requestByteSlice = byteSlice
 
-	req, err := http.NewRequest(http.MethodPost, p.URL, bytes.NewReader(byteSlice))
+	req, err := http.NewRequest(http.MethodPost, p.URL, reader)
 	if err != nil {
 		log.Printf(
 			"%s: method=%s, url=%s, byteSlice=%s, NewRequest failed, err=%s",
 			p.LogPrefix,
 			p.Method,
 			p.URL,
-			byteSlice,
+			p.requestByteSlice,
 			err.Error(),
 		)
 		return err
@@ -218,20 +224,22 @@ func (p *Client[T, R]) send(req *http.Request) error {
 	}
 	defer rsp.Body.Close()
 
-	decoder := jsoniter.NewDecoder(rsp.Body)
-	err = decoder.Decode(p.Response)
-	if err != nil {
-		log.Printf(
-			"%s: method=%s, url=%s, status=%d, elapsed=%dus, request=%+v, json decode failed, err=%s",
-			p.LogPrefix,
-			p.Method,
-			p.URL,
-			rsp.StatusCode,
-			t1.Sub(t0).Microseconds(),
-			p.Request,
-			err.Error(),
-		)
-		return err
+	if p.Decode {
+		decoder := jsoniter.NewDecoder(rsp.Body)
+		err = decoder.Decode(p.Response)
+		if err != nil {
+			log.Printf(
+				"%s: method=%s, url=%s, status=%d, elapsed=%dus, request=%+v, json decode failed, err=%s",
+				p.LogPrefix,
+				p.Method,
+				p.URL,
+				rsp.StatusCode,
+				t1.Sub(t0).Microseconds(),
+				p.Request,
+				err.Error(),
+			)
+			return err
+		}
 	}
 
 	if p.LogDebug {
