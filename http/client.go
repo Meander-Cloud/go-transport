@@ -18,6 +18,7 @@ type Options[T any, R any] struct {
 	Method   string
 	URL      string
 	Header   http.Header
+	Prepare  func(*Options[T, R], *http.Request, []byte) error
 	Timeout  time.Duration
 	Request  T
 	Response R
@@ -28,11 +29,14 @@ type Options[T any, R any] struct {
 
 type Client[T any, R any] struct {
 	*Options[T, R]
+
+	requestByteSlice []byte
 }
 
 func NewClient[T any, R any](options *Options[T, R]) *Client[T, R] {
 	return &Client[T, R]{
-		Options: options,
+		Options:          options,
+		requestByteSlice: nil,
 	}
 }
 
@@ -128,6 +132,7 @@ func (p *Client[T, R]) post() error {
 		)
 		return err
 	}
+	p.requestByteSlice = byteSlice
 
 	req, err := http.NewRequest(http.MethodPost, p.URL, bytes.NewReader(byteSlice))
 	if err != nil {
@@ -165,6 +170,25 @@ func (p *Client[T, R]) send(req *http.Request) error {
 			}
 		}
 	}()
+
+	if p.Prepare != nil {
+		err := p.Prepare(
+			p.Options,
+			req,
+			p.requestByteSlice,
+		)
+		if err != nil {
+			log.Printf(
+				"%s: method=%s, url=%s, request=%+v, prepare failed, err=%s",
+				p.LogPrefix,
+				p.Method,
+				p.URL,
+				p.Request,
+				err.Error(),
+			)
+			return err
+		}
+	}
 
 	var timeout time.Duration
 	if p.Timeout <= 0 {
