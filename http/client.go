@@ -122,7 +122,9 @@ func (p *Client[T, R]) get() error {
 }
 
 func (p *Client[T, R]) post() error {
-	var reader *bytes.Reader
+	var req *http.Request
+	var err error
+
 	if p.Encode {
 		byteSlice, err := jsoniter.Marshal(p.Request)
 		if err != nil {
@@ -137,10 +139,12 @@ func (p *Client[T, R]) post() error {
 			return err
 		}
 		p.requestByteSlice = byteSlice
-		reader = bytes.NewReader(byteSlice)
+
+		req, err = http.NewRequest(http.MethodPost, p.URL, bytes.NewReader(byteSlice))
+	} else {
+		req, err = http.NewRequest(http.MethodPost, p.URL, nil)
 	}
 
-	req, err := http.NewRequest(http.MethodPost, p.URL, reader)
 	if err != nil {
 		log.Printf(
 			"%s: method=%s, url=%s, byteSlice=%s, NewRequest failed, err=%s",
