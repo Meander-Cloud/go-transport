@@ -216,7 +216,7 @@ func (p *Client[T, R]) send(req *http.Request) error {
 	t1 := time.Now().UTC()
 	if err != nil {
 		log.Printf(
-			"%s: method=%s, url=%s, elapsed=%dus, request=%+v, send failed, err=%s",
+			"%s: method=%s, url=%s, elapsed=%dµs, request=%+v, send failed, err=%s",
 			p.LogPrefix,
 			p.Method,
 			p.URL,
@@ -233,7 +233,7 @@ func (p *Client[T, R]) send(req *http.Request) error {
 		err = decoder.Decode(p.Response)
 		if err != nil {
 			log.Printf(
-				"%s: method=%s, url=%s, status=%d, elapsed=%dus, request=%+v, json decode failed, err=%s",
+				"%s: method=%s, url=%s, status=%d, elapsed=%dµs, request=%+v, json decode failed, err=%s",
 				p.LogPrefix,
 				p.Method,
 				p.URL,
@@ -248,7 +248,7 @@ func (p *Client[T, R]) send(req *http.Request) error {
 
 	if p.LogDebug {
 		log.Printf(
-			"%s: %s %s %d %dus, request=%+v, response=%+v",
+			"%s: %s %s %d %dµs, request=%+v, response=%+v",
 			p.LogPrefix,
 			p.Method,
 			p.URL,
